@@ -15,7 +15,7 @@
 ---
 
 
-## 1. Business problem
+## Business problem
 
 An online marketplace wants to understand where its revenue comes from and where it is exposed.
 
@@ -25,7 +25,7 @@ An online marketplace wants to understand where its revenue comes from and where
 
 The analysis is framed as **what is happening → why → what to do**: descriptive KPIs and trends first, then diagnostics (reviews, freight, delivery), then recommendations.
 
-## 2. Dataset
+## Dataset
 
 [Olist Brazilian E-Commerce Public Dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) (Kaggle): 9 relational CSV files covering real orders placed on the Olist marketplace.
 
@@ -42,21 +42,29 @@ The analysis is framed as **what is happening → why → what to do**: descript
 | `geolocation` | ~1,000,000 | Zip-prefix coordinates (loaded, not used in the dashboard) |
 
 
-## 4. Workflow
+## Workflow
 
 ```
-Kaggle CSVs ──► clean_reviews.py ──► MySQL (schema + LOAD DATA) ──► vw_order_items_full (SQL view)
-                                                                          │
-                                       11 analysis queries (window functions, CTEs, RFM)
-                                                                          │
-                              Power BI: Power Query ► data model ► DAX measures ► dashboard
+Kaggle CSVs (9 files)
+        ↓
+clean_reviews.py  (flatten line breaks in review comments)
+        ↓
+MySQL: schema → LOAD DATA → row-count check
+        ↓
+vw_order_items_full  (base SQL view)
+        ↓
+11 analysis queries  (window functions, CTEs, RFM)
+        ↓
+Power BI: Power Query → data model → DAX measures → dashboard
+        ↓
+Insights and suggested actions
 ```
 
 ---
 
-## 5. MySQL work
+## MySQL work
 
-### 5.1 Schema design 
+### Schema design 
 
 Nine InnoDB tables with enforced keys, created in dependency order:
 
@@ -66,7 +74,7 @@ Nine InnoDB tables with enforced keys, created in dependency order:
 - **Types:** `CHAR(32)` for hash IDs, `DECIMAL(10,2)` for money, `DATETIME` for timestamps.
 - `geolocation` has no natural key (many rows per zip prefix), so it is loaded as a plain indexed table.
 
-### 5.2 Loading
+### Loading
 
 - Server-side `LOAD DATA INFILE` from the `secure_file_priv` folder, with `FOREIGN_KEY_CHECKS` switched off during the load.
 - Blank numeric and date fields converted to real `NULL`s with `NULLIF(@var, '')` (otherwise MySQL inserts `0` or `0000-00-00`).
@@ -74,7 +82,7 @@ Nine InnoDB tables with enforced keys, created in dependency order:
 - A row-count check at the end of the script confirms every table loaded (`sql/olist_sanity_check.sql`).
 
 
-### 5.4 Analytical base view
+### Analytical base view
 
 `vw_order_items_full` is the single joined table the analysis and the dashboard are built on: one row per order item, joining `orders → order_items → customers → products → category translation`, excluding canceled and unavailable orders, with an English category name and `item_total = price + freight_value`.
 
@@ -95,7 +103,7 @@ LEFT JOIN product_category_name_translation t ON t.product_category_name = p.pro
 WHERE o.order_status NOT IN ('canceled', 'unavailable');
 ```
 
-### 5.5 Analysis queries
+### Analysis queries
 
 | # | Question | SQL techniques |
 |---|---|---|
@@ -143,20 +151,20 @@ Selected SQL results (all non-canceled orders):
 
 ---
 
-## 6. Power BI work
+## Power BI work
 
-### 6.1 Data model
+### Data model
 
 - Tables loaded: `vw_order_items_full` (fact), `order_reviews`, `order_payments`, and a `DateTable`.
 - `DateTable` built with `CALENDAR()`, with `Year`, `MonthNumber`, `MonthName` and `YearMonth` columns, **marked as a date table**; related one-to-many to a date-only `OrderDate` column derived from the purchase timestamp.
 - `vw_order_items_full ↔ order_reviews` and `↔ order_payments` on `order_id` as **many-to-many with bidirectional filtering**, because `order_id` repeats on both sides (several items per order). Without these relationships the review score was identical (4.0864) for every category, because category filters never reached the reviews table. Adding them gave each category its own score.
 
-### 6.2 Power Query
+### Power Query
 
 - `order_purchase_timestamp` filtered to **2017-01-01 ≤ date < 2018-09-01** (full months only).
 - `order_payments` **inner-merged** with the filtered items query on `order_id` (merge column then removed), so the payment donut covers exactly the same orders as the revenue figures. Result: payments **15.74M = item price 13.49M + freight 2.25M**, which matches `SUM(item_total)` exactly.
 
-### 6.3 DAX measures
+### DAX measures
 
 ```dax
 Total Revenue       = SUM(vw_order_items_full[price])
@@ -176,7 +184,7 @@ Rolling 3mo Avg Revenue =
 Avg Review Score    = AVERAGE(order_reviews[review_score])
 ```
 
-### 6.4 Dashboard
+### Dashboard
 
 Single 16:9 page with a custom dark theme (`dashboard/theme/olist_dark_theme.json`) and gradient background.
 
@@ -194,7 +202,7 @@ Single 16:9 page with a custom dark theme (`dashboard/theme/olist_dark_theme.jso
 
 ---
 
-## 7. Key insights
+## Key insights
 
 1. **Fast growth, then a plateau.** Monthly revenue climbed from about 0.1M in Jan 2017 to about 1.0M by Nov 2017 and held around 0.85–1.0M through 2018. The Nov 2017 peak lines up with Black Friday. Month-over-month growth started in triple digits and flattened toward 0% by mid-2018.
 2. **Revenue is concentrated geographically.** São Paulo alone is roughly 38% of revenue; SP, RJ and MG together are about 63%.
@@ -204,14 +212,14 @@ Single 16:9 page with a custom dark theme (`dashboard/theme/olist_dark_theme.jso
 6. **Delivery estimates are too conservative in remote states.** RR, AP and AM take 26–29 days on average, but arrive 17–20 days **ahead** of the estimated date.
 7. **Credit card dominates payments.** About 78% of payment value is credit card (3.5 installments on average) and 18% is boleto, a one-off bank-slip payment common in Brazil. Vouchers and debit cards together are about 4%.
 
-## 8. Suggested actions
+## Suggested actions
 
 - **Investigate `bed_bath_table` quality** (seller- and product-level review drill-down): the largest revenue-at-risk category.
 - **Reduce the freight burden in North/Northeast states** through regional fulfilment, carrier renegotiation or free-shipping thresholds, and measure the effect on conversion.
 - **Recalibrate delivery estimates for remote states.** Promising dates closer to actual performance may improve conversion (a hypothesis to A/B test).
 - **Plan promotions and inventory around the November peak**, and treat the flat 2018 growth as a signal to add retention levers (the RFM query in the SQL file is a starting point).
 
-## 9. Assumptions and limitations
+## Assumptions and limitations
 
 - **Date window:** only Jan 2017 – Aug 2018 is analyzed. Late 2016 and Sep–Oct 2018 are incomplete in the source data. The SQL view does not trim dates; the trimming happens in Power Query, so the SQL results above include those tiny partial months.
 - **Revenue vs. payments:** revenue is item price only; payment value also includes freight, hence 13.49M vs. 15.74M. AOV is (price + freight) / orders.
@@ -220,42 +228,16 @@ Single 16:9 page with a custom dark theme (`dashboard/theme/olist_dark_theme.jso
 - **No cost data:** profit and margin cannot be analyzed.
 - **Delivery and RFM results** come from SQL; they are not on the dashboard.
 
-## 10. Repository structure
 
-```
-.
-├── README.md
-├── images/
-│   └── dashboard.png
-├── dashboard/
-│   ├── E-Commerce_Sales_Intelligence_Dashboard.pbix
-│   ├── E-Commerce_Sales_Intelligence_Dashboard.pdf
-│   ├── theme/olist_dark_theme.json
-│   └── assets/dashboard_background.png
-├── sql/
-│   ├── olist_schema_mysql.sql        # tables, keys, indexes
-│   ├── olist_load_data.sql           # LOAD DATA INFILE + row-count check
-│   ├── olist_analysis_queries.sql    # base view + 11 analysis queries
-│   └── olist_sanity_check.sql        # row counts per table
-├── scripts/
-│   └── clean_reviews.py              # flattens line breaks in review comments
-└── data/
-    └── README.md                     # where to download the Kaggle CSVs (not committed)
-```
-
-## 11. How to reproduce
+## How to reproduce
 
 1. Download the dataset from [Kaggle](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) and put the CSVs in the folder reported by `SHOW VARIABLES LIKE 'secure_file_priv';`.
 2. Clean the reviews file: `python scripts/clean_reviews.py olist_order_reviews_dataset.csv olist_order_reviews_dataset_clean.csv`
 3. In MySQL Workbench run, in order: `olist_schema_mysql.sql` → `olist_load_data.sql` (edit the file paths) → `olist_analysis_queries.sql`.
 4. Open the `.pbix` in Power BI Desktop, point the MySQL connection at `localhost:3306` / `olist_ecommerce`, and refresh.
 
-**Setup notes**
-- Power BI's MySQL connector needs **MySQL Connector/NET** installed. If it is not detected, try an earlier 8.0.x release (8.0.33 has a reported Power BI compatibility bug).
-- If Power BI reports invalid credentials against MySQL 8, switch the user to `mysql_native_password` (`ALTER USER ... IDENTIFIED WITH mysql_native_password BY '...'`).
-- Map visuals are disabled by default in Power BI (File → Options → Security); this project uses a treemap instead.
 
-## 12. Future improvements
+## Future improvements
 
 - Add pages for **delivery performance** and **RFM customer segments** (queries already written).
 - Add a **next-quarter revenue forecast** per category.
@@ -264,4 +246,4 @@ Single 16:9 page with a custom dark theme (`dashboard/theme/olist_dark_theme.jso
 
 ---
 
-**Author:** Anurag 
+**Author:** Anurag Singh
