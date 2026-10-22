@@ -10,26 +10,10 @@
 | **13.49M** | **98K** | **160.24** | Jan 2017 – Aug 2018 |
 
 > Revenue = item price. Average order value includes freight (price + freight per order).
-> Full-size export: [`dashboard/E-Commerce_Sales_Intelligence_Dashboard.pdf`](dashboard/E-Commerce_Sales_Intelligence_Dashboard.pdf)
+
 
 ---
 
-## Table of contents
-
-1. [Business problem](#1-business-problem)
-2. [Dataset](#2-dataset)
-3. [Tech stack](#3-tech-stack)
-4. [Workflow](#4-workflow)
-5. [MySQL work](#5-mysql-work)
-6. [Power BI work](#6-power-bi-work)
-7. [Key insights](#7-key-insights)
-8. [Suggested actions](#8-suggested-actions)
-9. [Assumptions and limitations](#9-assumptions-and-limitations)
-10. [Repository structure](#10-repository-structure)
-11. [How to reproduce](#11-how-to-reproduce)
-12. [Future improvements](#12-future-improvements)
-
----
 
 ## 1. Business problem
 
@@ -57,11 +41,6 @@ The analysis is framed as **what is happening → why → what to do**: descript
 | `sellers` | 3,095 | Seller location |
 | `geolocation` | ~1,000,000 | Zip-prefix coordinates (loaded, not used in the dashboard) |
 
-## 3. Tech stack
-
-- **MySQL 8.0** (MySQL Workbench): schema design, loading, cleaning, analysis queries
-- **Python (pandas)**: one cleaning step for the reviews file
-- **Power BI Desktop**: Power Query, data model, DAX, dashboard design (custom dark theme)
 
 ## 4. Workflow
 
@@ -77,7 +56,7 @@ Kaggle CSVs ──► clean_reviews.py ──► MySQL (schema + LOAD DATA) ─�
 
 ## 5. MySQL work
 
-### 5.1 Schema design (`sql/olist_schema_mysql.sql`)
+### 5.1 Schema design 
 
 Nine InnoDB tables with enforced keys, created in dependency order:
 
@@ -87,25 +66,13 @@ Nine InnoDB tables with enforced keys, created in dependency order:
 - **Types:** `CHAR(32)` for hash IDs, `DECIMAL(10,2)` for money, `DATETIME` for timestamps.
 - `geolocation` has no natural key (many rows per zip prefix), so it is loaded as a plain indexed table.
 
-### 5.2 Loading (`sql/olist_load_data.sql`)
+### 5.2 Loading
 
 - Server-side `LOAD DATA INFILE` from the `secure_file_priv` folder, with `FOREIGN_KEY_CHECKS` switched off during the load.
 - Blank numeric and date fields converted to real `NULL`s with `NULLIF(@var, '')` (otherwise MySQL inserts `0` or `0000-00-00`).
 - `order_reviews` loaded with `REPLACE` so repeated `(review_id, order_id)` pairs do not abort the load.
 - A row-count check at the end of the script confirms every table loaded (`sql/olist_sanity_check.sql`).
 
-### 5.3 Data-quality issues found and how they were handled
-
-| Issue | Effect | Fix |
-|---|---|---|
-| **Line breaks inside review comments** (3,852 messages) | `LOAD DATA` treats `\n` as a row end even inside quotes, so rows split and columns shifted (Error 1292: a hash landing in a `DATETIME` column) | [`scripts/clean_reviews.py`](scripts/clean_reviews.py) reads the file with pandas and flattens line breaks to spaces; 99,224 rows preserved |
-| Repeated `(review_id, order_id)` pairs | Primary-key collisions | Composite key + `REPLACE` (10 duplicates collapsed → 99,214 rows) |
-| Blank numeric / date fields | Wrong zero values | `NULLIF` on load |
-| Products without a category | Orders dropped from category analysis | `LEFT JOIN` + `COALESCE(..., 'unknown')` |
-| Canceled / unavailable orders | Would inflate revenue | Excluded in the base view |
-| **Very sparse late-2016 data and a mid-September 2018 cutoff** | Absurd MoM growth (+21,312%, −99.98%), a fake "collapse" at the end of the trend, and a biased seasonality chart | Analysis window trimmed to **Jan 2017 – Aug 2018** (applied in Power Query) |
-| Duplicate rows per zip prefix in `geolocation` | Fan-out on joins | Not joined; would be deduplicated with `AVG(lat/lng)` per prefix if a map is added |
-| `rows` is a reserved word in MySQL 8.0 | Syntax error 1064 in the row-count check | Alias renamed to `row_count` |
 
 ### 5.4 Analytical base view
 
@@ -128,7 +95,7 @@ LEFT JOIN product_category_name_translation t ON t.product_category_name = p.pro
 WHERE o.order_status NOT IN ('canceled', 'unavailable');
 ```
 
-### 5.5 Analysis queries (`sql/olist_analysis_queries.sql`)
+### 5.5 Analysis queries
 
 | # | Question | SQL techniques |
 |---|---|---|
@@ -297,4 +264,4 @@ Single 16:9 page with a custom dark theme (`dashboard/theme/olist_dark_theme.jso
 
 ---
 
-**Author:** Anurag · [LinkedIn](https://www.linkedin.com/) · [GitHub](https://github.com/)
+**Author:** Anurag 
