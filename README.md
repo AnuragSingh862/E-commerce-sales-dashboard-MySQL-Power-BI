@@ -2,7 +2,8 @@
 
 **End-to-end analytics project on the Olist Brazilian e-commerce marketplace (~100K orders): raw CSVs → MySQL → SQL analysis → Power BI dashboard.**
 
-<img width="3001" height="1688" alt="dashboard" src="https://github.com/user-attachments/assets/6bc5bdbc-0025-46fb-b1df-072959eacccf" />
+<img width="1108" height="625" alt="image" src="https://github.com/user-attachments/assets/eba68c70-ad35-4a63-a2d6-7523c5301fe6" />
+
 
 
 | Revenue | Orders | Avg. order value | Period |
